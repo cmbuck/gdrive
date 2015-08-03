@@ -3,6 +3,8 @@ gdrive
 
 
 ## Overview
+This is a fork of [presmussen](https://github.com/prasmussen)'s [gdrive](https://github.com/prasmussen/gdrive) project which adds functionality for multiple simultaneous uploads to decrease upload times by several orders of magnitude.
+
 gdrive is a command line utility for uploading and downloading single files to your Google Drive.
 This tool on its own does not do synchronization of any kind, if you want that you can use googles own tool.
 It is meant for one-off uploads or downloads and integration with other unix tools. One use-case could be
@@ -17,6 +19,7 @@ If you want to compile from source you need the go toolchain: http://golang.org/
 - Or compile it yourself `go build drive.go`
 
 ### Downloads
+These links are for the original gdrive binaries--not this forked version.
 - [drive-freebsd-386 v1.9.0](https://drive.google.com/uc?id=0B3X9GlR6EmbnNkdVSU1oNUoyQ0U)
 - [drive-freebsd-x64 v1.9.0](https://drive.google.com/uc?id=0B3X9GlR6EmbnZTdTTlM2Y1ViV1E)
 - [drive-linux-386 v1.9.0](https://drive.google.com/uc?id=0B3X9GlR6EmbnUWZGRmYxVUU2M00)

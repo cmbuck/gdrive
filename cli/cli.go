@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // List of google docs mime types excluding vnd.google-apps.folder
@@ -29,6 +30,18 @@ var googleMimeTypes = []string{
 	"application/vnd.google-apps.unknown",
 	"application/vnd.google-apps.video",
 	"application/vnd.google-apps.map",
+}
+
+// Struct containing all the information needed to do a file upload task
+type JobInfo struct {
+	d *gdrive.Drive
+	input *os.File
+	inputInfo os.FileInfo
+	title string
+	parentId string
+	share bool
+	mimeType string
+	convert bool
 }
 
 func List(d *gdrive.Drive, query, titleFilter string, maxResults int, sharedStatus, noHeader, includeDocs, sizeInBytes bool) error {
@@ -252,39 +265,54 @@ func Upload(d *gdrive.Drive, input *os.File, title string, parentId string, shar
 		return err
 	}
 
+	// Create channels for worker pool
+	jobs := make(chan JobInfo, 100)
+	results := make(chan int, 100)
+	
+	numWorkers := 10
+	for w := 1; w <= numWorkers; w++ {
+        go uploadFileWorker(w, jobs, results)
+    }
+
+	jobCount := 0
 	if inputInfo.IsDir() {
-		return uploadDirectory(d, input, inputInfo, title, parentId, share, mimeType, convert)
+		_, jobCount = uploadDirectory(d, input, inputInfo, title, parentId, share, mimeType, convert, jobs)
 	} else {
 		return uploadFile(d, input, inputInfo, title, parentId, share, mimeType, convert)
 	}
-
+	
+	close(jobs)
+	for a := 1; a <= jobCount; a++ {
+        <-results
+    }
+	
 	return nil
 }
 
-func uploadDirectory(d *gdrive.Drive, input *os.File, inputInfo os.FileInfo, title string, parentId string, share bool, mimeType string, convert bool) error {
+func uploadDirectory(d *gdrive.Drive, input *os.File, inputInfo os.FileInfo, title string, parentId string, share bool, mimeType string, convert bool, jobs chan<- JobInfo) (error, int) {
 	// Create folder
 	folder, err := makeFolder(d, filepath.Base(inputInfo.Name()), parentId, share)
 	if err != nil {
-		return err
+		return err, 0
 	}
 
 	// Read all files in directory
 	files, err := input.Readdir(0)
 	if err != nil {
-		return err
+		return err, 0
 	}
 
 	// Get current dir
 	currentDir, err := os.Getwd()
 	if err != nil {
-		return err
+		return err, 0
 	}
 
 	// Go into directory
 	dstDir := filepath.Join(currentDir, inputInfo.Name())
 	err = os.Chdir(dstDir)
 	if err != nil {
-		return err
+		return err, 0
 	}
 
 	// Change back to original directory when done
@@ -292,24 +320,33 @@ func uploadDirectory(d *gdrive.Drive, input *os.File, inputInfo os.FileInfo, tit
 		os.Chdir(currentDir)
 	}()
 
+	// Keep track for number of jobs
+	jobCount := 0
+	jc := 0
+	
 	for _, fi := range files {
 		f, err := os.Open(fi.Name())
 		if err != nil {
-			return err
+			return err, 0
 		}
 
 		if fi.IsDir() {
-			err = uploadDirectory(d, f, fi, "", folder.Id, share, mimeType, convert)
+			err, jc = uploadDirectory(d, f, fi, "", folder.Id, share, mimeType, convert, jobs)
 		} else {
-			err = uploadFile(d, f, fi, "", folder.Id, share, mimeType, convert)
+			fmt.Printf("Adding job\r\n");
+			jobCount++
+			jobs <- JobInfo{d, f, fi, "", folder.Id, share, mimeType, convert}
 		}
+		
+		jobCount += jc
+		jc = 0
 
 		if err != nil {
-			return err
+			return err, jobCount
 		}
 	}
 
-	return nil
+	return nil, jobCount
 }
 
 func uploadFile(d *gdrive.Drive, input *os.File, inputInfo os.FileInfo, title string, parentId string, share bool, mimeType string, convert bool) error {
@@ -352,6 +389,57 @@ func uploadFile(d *gdrive.Drive, input *os.File, inputInfo os.FileInfo, title st
 		err = Share(d, info.Id)
 	}
 	return err
+}
+
+func uploadFileWorker(id int, jobs <-chan JobInfo, results chan<- int) error {
+	time.Sleep(time.Second)
+	for j := range jobs {
+		fmt.Println("Accepted job")
+		if j.title == "" {
+			j.title = filepath.Base(j.inputInfo.Name())
+		}
+
+		if j.mimeType == "" {
+			j.mimeType = mime.TypeByExtension(filepath.Ext(j.title))
+		}
+
+		// File instance
+		f := &drive.File{Title: j.title, MimeType: j.mimeType}
+		// Set parent (if provided)
+		if j.parentId != "" {
+			p := &drive.ParentReference{Id: j.parentId}
+			f.Parents = []*drive.ParentReference{p}
+		}
+		getRate := util.MeasureTransferRate()
+
+		if j.convert {
+			fmt.Printf("Converting to Google Docs format enabled\n")
+		}
+
+		info, err := j.d.Files.Insert(f).Convert(j.convert).ResumableMedia(context.Background(), j.input, j.inputInfo.Size(), j.mimeType).Do()
+		if err != nil {
+			return fmt.Errorf("An error occurred uploading the document: %v\n", err)
+		}
+
+		// Total bytes transferred
+		bytes := info.FileSize
+
+		// Print information about uploaded file
+		printInfo(j.d, info, false)
+		fmt.Printf("MIME Type: %s\n", j.mimeType)
+		fmt.Printf("Uploaded '%s' at %s, total %s\n", info.Title, getRate(bytes), util.FileSizeFormat(bytes, false))
+		
+		// Placeholder for results
+		results <- 1
+
+		// Share file if the share flag was provided
+		if j.share {
+			err = Share(j.d, info.Id)
+		}
+		
+	}
+	fmt.Println("Worker terminating");
+	return nil
 }
 
 func DownloadLatest(d *gdrive.Drive, stdout bool, format string, force bool) error {
