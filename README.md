@@ -3,7 +3,7 @@ gdrive
 
 
 ## Overview
-This is a fork of [presmussen](https://github.com/prasmussen)'s [gdrive](https://github.com/prasmussen/gdrive) project which adds functionality for multiple simultaneous uploads to decrease upload times by several orders of magnitude.
+**This is a fork of [presmussen](https://github.com/prasmussen)'s [gdrive](https://github.com/prasmussen/gdrive) project which adds functionality for multiple simultaneous uploads.**  This feature can decrease upload times by several orders of magnitude for transfers of several files.
 
 gdrive is a command line utility for uploading and downloading single files to your Google Drive.
 This tool on its own does not do synchronization of any kind, if you want that you can use googles own tool.

@@ -258,7 +258,7 @@ func UploadStdin(d *gdrive.Drive, input io.ReadCloser, title string, parentId st
 	return err
 }
 
-func Upload(d *gdrive.Drive, input *os.File, title string, parentId string, share bool, mimeType string, convert bool) error {
+func Upload(d *gdrive.Drive, input *os.File, title string, parentId string, share bool, mimeType string, convert bool, numWorkers int) error {
 	// Grab file info
 	inputInfo, err := input.Stat()
 	if err != nil {
@@ -269,7 +269,6 @@ func Upload(d *gdrive.Drive, input *os.File, title string, parentId string, shar
 	jobs := make(chan JobInfo, 100)
 	results := make(chan int, 100)
 	
-	numWorkers := 10
 	for w := 1; w <= numWorkers; w++ {
         go uploadFileWorker(w, jobs, results)
     }

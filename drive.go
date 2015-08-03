@@ -52,6 +52,7 @@ type Options struct {
 		MimeType  string   `goptions:"--mimetype, description='The MIME type (default will try to figure it out)'"`
 		Convert   bool     `goptions:"--convert, description='File will be converted to Google Docs format'"`
 		ChunkSize int64    `goptions:"-C, --chunksize, description='Set chunk size in bytes. Minimum is 262144, default is 4194304. Recommended to be a power of two.'"`
+		Workers   int      `goptions:"-w, --workers, description='Set number of concurrent upload workers. Default is 4.'"`
 	} `goptions:"upload"`
 
 	Download struct {
@@ -120,11 +121,17 @@ func main() {
 		if args.ChunkSize >= (1 << 18) {
 			googleapi.SetChunkSize(args.ChunkSize)
 		}
+		
+		// Set number of workers if given
+		numWorkers := 1
+		if args.Workers > 1 {
+			numWorkers = args.Workers
+		}
 
 		if args.Stdin {
 			err = cli.UploadStdin(drive, os.Stdin, args.Title, args.ParentId, args.Share, args.MimeType, args.Convert)
 		} else {
-			err = cli.Upload(drive, args.File, args.Title, args.ParentId, args.Share, args.MimeType, args.Convert)
+			err = cli.Upload(drive, args.File, args.Title, args.ParentId, args.Share, args.MimeType, args.Convert, numWorkers)
 		}
 
 	case "download":
